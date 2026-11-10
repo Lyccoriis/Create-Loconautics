@@ -103,7 +103,6 @@ dependencies {
     runtimeOnly("dev.engine-room.flywheel:flywheel-neoforge-${minecraft_version}:${flywheel_version}")
     implementation("com.tterrag.registrate:Registrate:${registrate_version}")
 
-    compileOnly("dev.ryanhcode.sable:sable-common-${minecraft_version}:${sable_version}") { transitive = false }
     compileOnly("dev.ryanhcode.sable:sable-sable_rapier-${minecraft_version}:${sable_version}") { transitive = false }
     compileOnly("dev.ryanhcode.sable-companion:sable-companion-common-${minecraft_version}:${sable_companion_version}") { transitive = false }
     compileOnly("foundry.veil:veil-neoforge-${minecraft_version}:${veil_version}") { transitive = false }
