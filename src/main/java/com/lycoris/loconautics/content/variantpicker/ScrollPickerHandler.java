@@ -2,7 +2,12 @@ package com.lycoris.loconautics.content.variantpicker;
 
 import com.lycoris.loconautics.client.scrollmenu.ScrollMenu;
 import com.lycoris.loconautics.client.scrollmenu.ScrollMenuHandler;
+import com.lycoris.loconautics.content.conductorshat.ConductorsGoggles;
+import com.lycoris.loconautics.content.conductorshat.ConductorsGogglesItem;
+import com.lycoris.loconautics.content.conductorshat.ConductorsHatItem;
+import com.lycoris.loconautics.content.conductorshat.ConductorsHats;
 import com.lycoris.loconautics.network.packets.variantpicker.BlockVariantApplyPacket;
+import com.lycoris.loconautics.network.packets.variantpicker.HatColorApplyPacket;
 import com.mojang.blaze3d.platform.InputConstants;
 
 import net.createmod.catnip.platform.CatnipServices;
@@ -11,6 +16,8 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.InteractionHand;
+import net.minecraft.world.item.DyeColor;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Block;
 import net.neoforged.api.distmarker.Dist;
@@ -19,6 +26,7 @@ import net.neoforged.neoforge.client.settings.KeyConflictContext;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Function;
 
 @OnlyIn(Dist.CLIENT)
 public final class ScrollPickerHandler {
@@ -34,6 +42,12 @@ public final class ScrollPickerHandler {
         if (ScrollMenuHandler.isOpen()) return false;
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null) return false;
+        if (mc.player.getMainHandItem().getItem() instanceof ConductorsHatItem hat) {
+            return openColors(hat.getColor(), color -> ConductorsHats.HATS.get(color).get());
+        }
+        if (mc.player.getMainHandItem().getItem() instanceof ConductorsGogglesItem goggles) {
+            return openColors(goggles.getColor(), color -> ConductorsGoggles.GOGGLES.get(color).get());
+        }
         Block held = Block.byItem(mc.player.getMainHandItem().getItem());
         BlockVariantRegistry.Location loc = BlockVariantRegistry.locate(held);
         if (loc == null) return false;
@@ -56,6 +70,18 @@ public final class ScrollPickerHandler {
                         InteractionHand.MAIN_HAND, BuiltInRegistries.BLOCK.getKey(chosen)));
             }
         }, false, OPEN_KEY.getKey().getValue());
+        return ScrollMenuHandler.open(menu);
+    }
+
+    private static boolean openColors(DyeColor current, Function<DyeColor, Item> itemFor) {
+        List<ScrollMenu.Entry> entries = new ArrayList<>();
+        for (DyeColor color : DyeColor.values()) {
+            Item item = itemFor.apply(color);
+            entries.add(new ScrollMenu.Entry(new ItemStack(item), item.getDescription()));
+        }
+        ScrollMenu menu = new ScrollMenu(entries, current.getId(), idx ->
+                CatnipServices.NETWORK.sendToServer(new HatColorApplyPacket(InteractionHand.MAIN_HAND, idx)),
+                false, OPEN_KEY.getKey().getValue());
         return ScrollMenuHandler.open(menu);
     }
 

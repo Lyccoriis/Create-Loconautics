@@ -26,6 +26,7 @@ public final class Loconautics {
     public Loconautics(IEventBus modEventBus, ModContainer modContainer) {
         com.lycoris.loconautics.foundation.debug.DebugLogFilter.install();
         LoconauticsRegistries.register(modEventBus);
+        com.lycoris.loconautics.common.experimental.ExperimentalCondition.register(modEventBus);
         BoilerBlocks.register(modEventBus);
         com.lycoris.loconautics.content.cerisene.CeriseneBlocks.register(modEventBus);
         HoseSprayEntities.register(modEventBus);
@@ -35,6 +36,7 @@ public final class Loconautics {
         com.lycoris.loconautics.content.buffer.BufferBlocks.init();
         com.lycoris.loconautics.content.combustion.SmallEngineBlocks.init();
         com.lycoris.loconautics.content.conductorshat.ConductorsHats.init();
+        com.lycoris.loconautics.content.conductorshat.ConductorsGoggles.init();
         com.lycoris.loconautics.registry.LoconauticsSounds.register(modEventBus);
 
         modEventBus.addListener(this::commonSetup);
@@ -43,6 +45,7 @@ public final class Loconautics {
                 com.lycoris.loconautics.trainphysics.state.StationChunkTickets::register);
 
         modContainer.registerConfig(ModConfig.Type.SERVER, LoconauticsConfig.SERVER_SPEC);
+        modContainer.registerConfig(ModConfig.Type.COMMON, com.lycoris.loconautics.config.ExperimentalConfig.SPEC, "loconautics-experimental.toml");
 
         NeoForge.EVENT_BUS.addListener(this::onPlayerLogin);
         NeoForge.EVENT_BUS.addListener(this::onServerStopped);
@@ -106,6 +109,7 @@ public final class Loconautics {
         LoconauticsConstants.LOGGER.info("Loconautics common setup");
         com.lycoris.loconautics.content.bearingaxle.BogeyShaftPlacement.init();
         com.lycoris.loconautics.foundation.LoconauticsStress.register();
+        event.enqueueWork(com.lycoris.loconautics.content.conductorshat.ConductorsGoggles::registerWearing);
         if (net.neoforged.fml.ModList.get().isLoaded("hullsteel")) {
             com.lycoris.loconautics.content.hatch.HullsteelSocketBridge.install();
         }
@@ -122,7 +126,6 @@ public final class Loconautics {
         event.enqueueWork(com.lycoris.loconautics.content.turntablebearing.TurntableCogPlacement::register);
         event.enqueueWork(com.lycoris.loconautics.compat.create.ManeuverEditorInstruction::register);
         SableTrainDriver.register();
-        com.lycoris.loconautics.trainphysics.visual.pivot.BogeyPivotManager.register();
         com.lycoris.loconautics.common.strand.RopeManager.register(HoseRopeManager::get);
         com.lycoris.loconautics.common.strand.RopeManager.register(
                 com.lycoris.loconautics.content.steelcable.rope.SteelCableRopeManager::get);
@@ -229,7 +232,6 @@ public final class Loconautics {
         runStopHook("GhostWheelBodies", com.lycoris.loconautics.trainphysics.wheels.GhostWheelBodies::clear);
         runStopHook("KnuckleJoint", com.lycoris.loconautics.content.knuckle.KnuckleJoint::clear);
         runStopHook("SubLevelContacts",com.lycoris.loconautics.trainphysics.sublevel.SubLevelContacts::clear);
-        runStopHook("BogeyPivotManager", com.lycoris.loconautics.trainphysics.visual.pivot.BogeyPivotManager::clear);
         runStopHook("CarriageCollisions", com.lycoris.loconautics.trainphysics.drive.CarriageCollisions::clear);
         runStopHook("CreateTrainShadow", com.lycoris.loconautics.trainphysics.state.CreateTrainShadow::clear);
         runStopHook("SableTrainDriver", com.lycoris.loconautics.trainphysics.drive.SableTrainDriver::clearAll);

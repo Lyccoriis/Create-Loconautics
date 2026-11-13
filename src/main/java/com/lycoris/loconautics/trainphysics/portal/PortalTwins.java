@@ -4,6 +4,7 @@ import com.simibubi.create.foundation.blockEntity.SmartBlockEntity;
 import dev.simulated_team.simulated.content.blocks.rope.RopeStrandHolderBehavior;
 import com.lycoris.loconautics.LoconauticsConstants;
 import com.lycoris.loconautics.common.sable.SableTeleportation;
+import com.lycoris.loconautics.network.packets.train.SableTrainSyncPacket;
 import com.lycoris.loconautics.trainphysics.SableTrain;
 import com.lycoris.loconautics.common.sable.SubLevelBlocks;
 import com.lycoris.loconautics.trainphysics.sublevel.SubLevelContacts;
@@ -79,6 +80,9 @@ public final class PortalTwins {
 
     public record MasterBlock(ServerLevel level, BlockPos pos, ServerSubLevel master) {}
 
+    // moving flag, so copycats do not pop their item
+    private static final int TWIN_FLAGS = Block.UPDATE_CLIENTS | Block.UPDATE_KNOWN_SHAPE | Block.UPDATE_MOVE_BY_PISTON;
+
     private static final Map<UUID, Twin> BY_MASTER = new HashMap<>();
     private static final Map<UUID, PortalFrame> FRAMES = new HashMap<>();
     private static final Set<UUID> TWIN_IDS = new HashSet<>();
@@ -136,6 +140,16 @@ public final class PortalTwins {
         return TWIN_IDS.contains(subLevelId);
     }
 
+    public static UUID masterOf(UUID bodyId) {
+        for (Twin twin : BY_MASTER.values()) {
+            if (twin.twinId().equals(bodyId)) {
+                return twin.masterId();
+            }
+        }
+        Follower follower = FOLLOWERS.get(bodyId);
+        return follower == null ? null : follower.masterId();
+    }
+
     public static UUID twinOf(UUID masterId) {
         Twin twin = BY_MASTER.get(masterId);
         return twin == null ? null : twin.twinId();
@@ -174,6 +188,10 @@ public final class PortalTwins {
         }
         FRAMES.put(masterId, frame);
         RENEWED.put(masterId, tick);
+        SableTrain car = SableTrainRegistry.bySubLevel(masterId);
+        if (car != null) {
+            SableTrainSyncPacket.announceTwin(car);
+        }
         // the masters do not collide with each other in home, so their twins must not either
         for (Twin other : List.copyOf(BY_MASTER.values())) {
             if (other.masterId().equals(masterId) || !other.twinDim().equals(frame.farDim())
@@ -334,6 +352,7 @@ public final class PortalTwins {
         }
         PortalTrace.log("drop master={} twin={} by={}", PortalTrace.id(masterId), PortalTrace.id(twin.twinId()),
                 caller());
+        SableTrainSyncPacket.broadcastRemoval(twin.twinId());
         SubLevelContacts.releaseAll(twin.twinId());
         PortalColliders.clear(twin.twinId());
         clear(server.getLevel(twin.twinDim()), twin.twinId(), twin.slot(), twin.box());
@@ -751,7 +770,7 @@ public final class PortalTwins {
                     if (twinLevel.getBlockState(to) == want) {
                         continue;
                     }
-                    twinLevel.setBlock(to, want, Block.UPDATE_CLIENTS | Block.UPDATE_KNOWN_SHAPE);
+                    twinLevel.setBlock(to, want, TWIN_FLAGS);
                     BlockEntity source = masterLevel.getBlockEntity(from);
                     BlockEntity copy = twinLevel.getBlockEntity(to);
                     if (source != null && copy != null) {
@@ -882,8 +901,7 @@ public final class PortalTwins {
         for (int x = bounds.minX(); x <= bounds.maxX(); x++) {
             for (int y = bounds.minY(); y <= bounds.maxY(); y++) {
                 for (int z = bounds.minZ(); z <= bounds.maxZ(); z++) {
-                    level.setBlock(new BlockPos(x, y, z), Blocks.AIR.defaultBlockState(),
-                            Block.UPDATE_CLIENTS | Block.UPDATE_KNOWN_SHAPE);
+                    level.setBlock(new BlockPos(x, y, z), Blocks.AIR.defaultBlockState(), TWIN_FLAGS);
                 }
             }
         }

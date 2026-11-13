@@ -228,7 +228,15 @@ public class TransmissionBlockEntity extends SplitShaftBlockEntity implements Me
         if (reattachPending && level != null && !level.isClientSide) {
             reattachPending = false;
             TransmissionTrace.note(this, "reattach");
-            RotationPropagator.handleAdded(level, worldPosition, this);
+            try {
+                RotationPropagator.handleAdded(level, worldPosition, this);
+            } catch (StackOverflowError overflow) {
+                // an output that loops back never settles, drop the pass not the server
+                com.lycoris.loconautics.LoconauticsConstants.LOGGER.error(
+                        "[transloop] reattach at {} overflowed, speed {} theoretical {} hasSource {} target {} reversed {}",
+                        worldPosition.toShortString(), getSpeed(), getTheoreticalSpeed(), hasSource(),
+                        computeTargetRPM(), isReversed());
+            }
         }
         super.tick();
         if (level == null || level.isClientSide) return;
@@ -301,6 +309,16 @@ public class TransmissionBlockEntity extends SplitShaftBlockEntity implements Me
         tag.putBoolean("DirectionActive", directionActive);
         if (!clientPacket && reattachPending) tag.putBoolean("ReattachPending", true);
 
+        writeFrequencies(tag, registries);
+    }
+
+    @Override
+    public void writeSafe(CompoundTag tag, HolderLookup.Provider registries) {
+        super.writeSafe(tag, registries);
+        writeFrequencies(tag, registries);
+    }
+
+    private void writeFrequencies(CompoundTag tag, HolderLookup.Provider registries) {
         CompoundTag freq = new CompoundTag();
         freq.put("SpeedFirst",  links.getFirstFreqA().saveOptional(registries));
         freq.put("SpeedSecond", links.getFirstFreqB().saveOptional(registries));
