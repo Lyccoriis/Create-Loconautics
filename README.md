@@ -40,7 +40,7 @@ English is the main language. The other languages are community work, and more h
 | --- | --- |
 | English (en_us) | 100% |
 | German (de_de) | 54% |
-| Spanish (es_es) | 63% |
+| Spanish (es_es) | 100% |
 | Portuguese, Brazil (pt_br) | 26% |
 | Russian (ru_ru) | 98% |
 | Galician (gl_es) | 100% |
