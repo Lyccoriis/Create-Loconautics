@@ -23,6 +23,7 @@ import com.lycoris.loconautics.trainphysics.rail.RailPick;
 import com.lycoris.loconautics.trainphysics.state.SableTrainPersistence;
 import com.lycoris.loconautics.trainphysics.state.SableTrainRegistry;
 import com.lycoris.loconautics.trainphysics.teleport.TeleportStrands;
+import com.lycoris.loconautics.trainphysics.teleport.TrainTeleporter;
 import com.lycoris.loconautics.trainphysics.wheels.GhostWheelBodies;
 import com.simibubi.create.content.trains.bogey.AbstractBogeyBlock;
 import com.simibubi.create.content.trains.entity.TravellingPoint;
@@ -31,6 +32,7 @@ import com.simibubi.create.content.trains.graph.TrackGraphHelper;
 import com.simibubi.create.content.trains.graph.TrackGraphLocation;
 import com.lycoris.loconautics.trainphysics.station.StationLastStyle;
 import com.lycoris.loconautics.trainphysics.station.TrainStations;
+import com.lycoris.loconautics.trainphysics.portal.PortalTwins;
 import com.lycoris.loconautics.trainphysics.portal.TrainPortalCrossing;
 import com.simibubi.create.content.trains.station.GlobalStation;
 import com.simibubi.create.content.trains.station.StationBlockEntity;
@@ -78,6 +80,8 @@ import java.util.UUID;
 import static com.lycoris.loconautics.foundation.LogFormat.v3d;
 
 public final class SableTrainSpawner {
+    static final int RAIL_SEARCH_VERTICAL_RANGE = 16;
+
 
     private static final double REACH = 12.0;
     private static final int MAX_BLOCKS = 4096;
@@ -722,7 +726,8 @@ public final class SableTrainSpawner {
                 Vec3.atCenterOf(pos)) <= RELOCATE_REACH * RELOCATE_REACH;
     }
 
-    private record RelocationPlan(List<SableTrain> cars, ChainSpots chain, boolean[] reversed, Vec3 upNormal) {
+    private record RelocationPlan(List<SableTrain> cars, ChainSpots chain, boolean[] reversed, Vec3 upNormal,
+                                  Vec3 look) {
     }
 
     private static void refuseRelocation(boolean speak, ServerPlayer player, String reason, @Nullable String say) {
@@ -744,11 +749,16 @@ public final class SableTrainSpawner {
         }
         BlockPos pos = pick.pos();
         ServerLevel level = player.serverLevel();
+        UUID masterId = PortalTwins.masterOf(subLevelId);
+        if (masterId != null) {
+            subLevelId = masterId;
+        }
         SableTrain train = SableTrainRegistry.bySubLevel(subLevelId);
-        if (train == null || train.level() != level) {
-            refuseRelocation(speak, player, "train for sub-level " + subLevelId + " not found here", null);
+        if (train == null) {
+            refuseRelocation(speak, player, "train for sub-level " + subLevelId + " not found", null);
             return null;
         }
+        ServerLevel trainLevel = train.level();
         if (LoconauticsConfig.WRENCH_RELOCATION_DERAILED_ONLY.get() && !train.isDerailed()) {
             return null;
         }
@@ -775,32 +785,31 @@ public final class SableTrainSpawner {
         }
         Vec3 upNormal = track.getUpNormal(level, pos, state);
 
-        List<SableTrain> cars = chainCars(level, subLevelId);
+        List<SableTrain> cars = chainCars(trainLevel, subLevelId);
         if (cars.isEmpty()) {
             refuseRelocation(speak, player, "no car of the train is on the rails", "that train has no car on the rails to relocate");
             return null;
         }
-        int coupled = TrainConsist.orderedChain(level, subLevelId).size();
+        int coupled = TrainConsist.orderedChain(trainLevel, subLevelId).size();
         if (cars.size() < coupled) {
             refuseRelocation(speak, player, (coupled - cars.size()) + " coupled car(s) have no rail seat",
                     (coupled - cars.size()) + " coupled car(s) are not on the rails, the whole train has to be seated first");
             return null;
         }
         for (SableTrain car : cars) {
-            UUID carId = car.car().subLevelId();
-            if (SableTeleportation.isInFlight(carId) || TrainPortalCrossing.straddle(carId) != null) {
-                refuseRelocation(speak, player, "the train is crossing a portal",
-                        "the train is crossing a portal, relocate it once it is across");
+            if (SableTeleportation.isInFlight(car.car().subLevelId())) {
+                refuseRelocation(speak, player, "the train is mid teleport",
+                        "the train is mid teleport, try again in a moment");
                 return null;
             }
         }
-        Vec3 nose = ConsistFacing.noseFirst(level, cars);
+        Vec3 nose = ConsistFacing.noseFirst(trainLevel, cars);
         ChainSpots chain = planChain(cars, loc, upNormal, look);
         if (chain == null) {
             refuseRelocation(speak, player, "not enough track at " + pos, "not enough track to relocate the whole train here");
             return null;
         }
-        return new RelocationPlan(cars, chain, ConsistFacing.reversed(level, cars, nose), upNormal);
+        return new RelocationPlan(cars, chain, ConsistFacing.reversed(trainLevel, cars, nose), upNormal, look);
     }
 
     public static boolean relocationBlockedByTrain(ServerPlayer player, UUID subLevelId, RailPick pick,
@@ -822,6 +831,27 @@ public final class SableTrainSpawner {
         Vec3 upNormal = plan.upNormal();
         if (PlacementClearance.blocker(level, cars, spots, upNormal) != null) {
             refuseRelocation(true, player, "another train is on the track at " + pos, null);
+            return;
+        }
+
+        for (SableTrain car : cars) {
+            if (TrainPortalCrossing.straddle(car.car().subLevelId()) != null) {
+                TrainPortalCrossing.cancel(car);
+            }
+        }
+        if (cars.get(0).level() != level) {
+            TrainTeleporter.Result result = TrainTeleporter.teleportToRail(cars.get(0), level, spots.get(0), upNormal,
+                    plan.look(), line -> LoconauticsConstants.LOGGER.info("[sabletrain] relocate {}", line));
+            if (!result.ok()) {
+                refuseRelocation(true, player, result.failure(), result.failure());
+                return;
+            }
+            for (SableTrain car : result.cars()) {
+                car.setSpeed(0.0);
+                car.setTargetSpeed(0.0);
+            }
+            LoconauticsConstants.LOGGER.info("[sabletrain] relocated consist of {} car(s) from another dimension to "
+                    + "{}", result.moved(), pos);
             return;
         }
 
@@ -1511,7 +1541,7 @@ public final class SableTrainSpawner {
         String refused = rail == null ? String.format("no rail under the bogey at %s, scanned r%d and %d down",
                         v3d(SubLevelData.worldOfOffset(sub, bogey.localPos())),
                         LoconauticsConfig.RAIL_SEARCH_RADIUS.get(),
-                        LoconauticsConfig.RAIL_SEARCH_VERTICAL_RANGE.get())
+                        RAIL_SEARCH_VERTICAL_RANGE)
                 : rail.railheadWithin(RAILHEAD_PROBE) ? "a railhead is within " + RAILHEAD_PROBE
                 : graph != null && rail.graph() != graph ? "that rail is on another graph"
                 : !seatFitsBogey(level, sub, bogey, rail, fwd, maxLateral)
@@ -1681,7 +1711,7 @@ public final class SableTrainSpawner {
     private static void edgeRailBelow(ServerLevel level, ServerSubLevel host, Vec3 origin, Vec3 look, Hit best,
                                       boolean hanging) {
         RailEdgeSearch.Found found = RailEdgeSearch.nearest(level.dimension(), host, origin, look,
-                LoconauticsConfig.RAIL_SEARCH_RADIUS.get() + 0.5, LoconauticsConfig.RAIL_SEARCH_VERTICAL_RANGE.get(),
+                LoconauticsConfig.RAIL_SEARCH_RADIUS.get() + 0.5, RAIL_SEARCH_VERTICAL_RANGE,
                 hanging);
         if (found != null && found.distSqr() < best.distSqr) {
             best.hit = new TrackHit(found.location(), found.upNormal(), Mth.floor(found.railY()));
@@ -1690,7 +1720,7 @@ public final class SableTrainSpawner {
     }
 
     private static double searchReach() {
-        return LoconauticsConfig.RAIL_SEARCH_RADIUS.get() + LoconauticsConfig.RAIL_SEARCH_VERTICAL_RANGE.get() + 1.0;
+        return LoconauticsConfig.RAIL_SEARCH_RADIUS.get() + RAIL_SEARCH_VERTICAL_RANGE + 1.0;
     }
 
     // the plot frame is a rigid move of the world one, so a squared block offset compares across hosts unchanged
@@ -1702,7 +1732,7 @@ public final class SableTrainSpawner {
     private static void scanRailBelow(ServerLevel level, ServerSubLevel host, BlockPos origin, Vec3 look, Hit best,
                                      boolean hanging) {
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
-        int down = LoconauticsConfig.RAIL_SEARCH_VERTICAL_RANGE.get();
+        int down = RAIL_SEARCH_VERTICAL_RANGE;
         int radius = LoconauticsConfig.RAIL_SEARCH_RADIUS.get();
         for (int dy = hanging ? -down : 0; dy <= (hanging ? 0 : down); dy++) {
             for (int dx = -radius; dx <= radius; dx++) {

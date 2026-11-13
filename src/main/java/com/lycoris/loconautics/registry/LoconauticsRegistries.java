@@ -182,10 +182,6 @@ public final class LoconauticsRegistries {
             ANALOG_CONTROLLER_BE =
             com.lycoris.loconautics.content.analogcontroller.AnalogControllerBlocks.CONTROLLER_BE;
 
-    public static final DeferredHolder<BlockEntityType<?>,
-            BlockEntityType<com.lycoris.loconautics.content.brakes.pull.PullBrakeBlockEntity>>
-            PULL_BRAKE_BE = com.lycoris.loconautics.content.brakes.pull.PullBrakeBlocks.PULL_BRAKE_BE;
-
     public static final DeferredHolder<MenuType<?>, MenuType<AnalogControllerMenu>>
             ANALOG_CONTROLLER_MENU = MENUS.register("analog_controller", () ->
             IMenuTypeExtension.create(LoconauticsRegistries::createAnalogControllerMenu));
@@ -520,7 +516,12 @@ public final class LoconauticsRegistries {
                             com.lycoris.loconautics.content.analogcontroller.AnalogControllerBlocks
                                     .CONTROLLER_ITEMS.get(com.lycoris.loconautics.content.analogcontroller
                                             .AnalogControllerBlocks.TAB_COLOR).get()))
-                    .displayItems((params, output) -> {
+                    .displayItems((params, rawOutput) -> {
+                        net.minecraft.world.item.CreativeModeTab.Output output = (stack, visibility) -> {
+                            if (!com.lycoris.loconautics.common.experimental.ExperimentalFeature.disabled(stack.getItem())) {
+                                rawOutput.accept(stack, visibility);
+                            }
+                        };
                         com.lycoris.loconautics.content.analogcontroller.AnalogControllerBlocks.CONTROLLER_ITEMS
                                 .forEach((color, item) -> output.accept(new net.minecraft.world.item.ItemStack(item.get()),
                                         color == com.lycoris.loconautics.content.analogcontroller
@@ -553,12 +554,6 @@ public final class LoconauticsRegistries {
                         output.accept(com.simibubi.create.AllItems.SCHEDULE.asStack());
 
                         output.accept(HANDBRAKE_ITEM.get());
-                        com.lycoris.loconautics.content.brakes.pull.PullBrakeBlocks.BRAKE_ITEMS
-                                .forEach((color, item) -> output.accept(new net.minecraft.world.item.ItemStack(item.get()),
-                                        color == com.lycoris.loconautics.content.brakes.pull.PullBrakeBlocks
-                                                .TAB_COLOR
-                                                ? net.minecraft.world.item.CreativeModeTab.TabVisibility.PARENT_AND_SEARCH_TABS
-                                                : net.minecraft.world.item.CreativeModeTab.TabVisibility.SEARCH_TAB_ONLY));
                         output.accept(TURNTABLE_BEARING_ITEM.get());
 
                         output.accept(dev.simulated_team.simulated.index.SimBlocks.ROPE_CONNECTOR);
@@ -579,6 +574,12 @@ public final class LoconauticsRegistries {
                         output.accept(FLUID_HATCH_ITEM.get());
 
                         com.lycoris.loconautics.content.conductorshat.ConductorsHats.HATS
+                                .forEach((color, item) -> output.accept(new net.minecraft.world.item.ItemStack(item.get()),
+                                        color == com.lycoris.loconautics.content.conductorshat.ConductorsHats.TAB_COLOR
+                                                ? net.minecraft.world.item.CreativeModeTab.TabVisibility.PARENT_AND_SEARCH_TABS
+                                                : net.minecraft.world.item.CreativeModeTab.TabVisibility.SEARCH_TAB_ONLY));
+
+                        com.lycoris.loconautics.content.conductorshat.ConductorsGoggles.GOGGLES
                                 .forEach((color, item) -> output.accept(new net.minecraft.world.item.ItemStack(item.get()),
                                         color == com.lycoris.loconautics.content.conductorshat.ConductorsHats.TAB_COLOR
                                                 ? net.minecraft.world.item.CreativeModeTab.TabVisibility.PARENT_AND_SEARCH_TABS
